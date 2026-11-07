@@ -96,12 +96,58 @@ button{cursor:pointer}
 .note{color:var(--muted);padding:.5rem 0}
 .foot{max-width:1080px;margin:0 auto;padding:0 1.25rem 2.5rem;color:var(--muted);font-size:.85rem}
 .toast{position:fixed;left:50%;bottom:1.25rem;transform:translateX(-50%);background:var(--ink);color:#fff;padding:.7rem 1.1rem;border-radius:10px;font-weight:500;z-index:10;max-width:90vw}
+.splash{min-height:100vh;display:grid;place-items:center;color:var(--muted)}
+.top{display:flex;align-items:center;justify-content:space-between;gap:1rem}
+.who{display:flex;align-items:center;gap:.75rem;font-size:.95rem;color:var(--muted)}
+.who .btn{min-height:38px;padding:.4rem .9rem;font-size:.9rem}
+.auth{min-height:100vh;display:grid;place-items:center;padding:1.25rem}
+.auth-box{width:100%;max-width:880px;display:grid;grid-template-columns:1fr;border-radius:22px;overflow:hidden;border:1px solid var(--line);background:var(--surface)}
+.auth-hero{background:var(--pine-d);color:var(--on-pine);padding:2rem 1.75rem}
+.auth-hero h1{font-size:clamp(2rem,6vw,3.2rem);font-weight:700}
+.auth-hero p{color:var(--on-pine-soft);margin:1rem 0 0;max-width:34ch}
+.auth-bar{display:flex;height:14px;border-radius:7px;overflow:hidden;margin-top:1.75rem;max-width:300px}
+.auth-form{padding:1.75rem}
+.tabs{display:flex;gap:.25rem;background:#E4EAE6;border-radius:12px;padding:4px;margin-bottom:1.25rem}
+.tabs button{flex:1;border:0;background:transparent;border-radius:9px;padding:.6rem;font-weight:600;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink)}
+@media(min-width:760px){.auth-box{grid-template-columns:1.1fr 1fr}.auth-hero{padding:2.75rem 2.25rem}.auth-form{padding:2.5rem 2.25rem}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
 
-<header class="top"><div class="brand">Ke Mana Uangku</div></header>
+<div id="splash" class="splash">Memuat…</div>
+
+<main id="auth" class="auth" hidden>
+  <div class="auth-box">
+    <section class="auth-hero">
+      <h1>Ke mana uangku?</h1>
+      <p>Catat setiap pengeluaran, lalu lihat bulan ini uangmu habis untuk apa saja.</p>
+      <div class="auth-bar" id="heroBar" aria-hidden="true"></div>
+    </section>
+    <section class="auth-form">
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" id="tabMasuk" aria-selected="true">Masuk</button>
+        <button type="button" role="tab" id="tabDaftar" aria-selected="false">Daftar</button>
+      </div>
+      <form id="authForm" novalidate>
+        <label class="field" id="namaWrap" hidden><span>Nama</span>
+          <input class="input" id="nama" maxlength="40" autocomplete="name"></label>
+        <label class="field"><span>Username</span>
+          <input class="input" id="username" maxlength="20" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
+        <label class="field"><span>Kata sandi</span>
+          <input class="input" id="password" type="password" autocomplete="current-password"></label>
+        <p class="err" id="authErr" role="alert"></p>
+        <button class="btn" id="authBtn" type="submit" style="width:100%">Masuk</button>
+      </form>
+    </section>
+  </div>
+</main>
+
+<div id="app" hidden>
+<header class="top"><div class="brand">Ke Mana Uangku</div>
+  <div class="who"><span id="halo"></span><button class="btn ghost" id="logout" type="button">Keluar</button></div>
+</header>
 
 <div class="layout">
   <aside class="summary" aria-label="Ringkasan bulan">
@@ -154,7 +200,8 @@ button{cursor:pointer}
   </main>
 </div>
 
-<p class="foot">Catatan Anda terhubung ke browser ini. Kalau data browser dihapus atau Anda pindah perangkat, catatan lama tidak akan tampil lagi.</p>
+<p class="foot">Masuk dengan akun yang sama di perangkat lain untuk melihat catatan ini.</p>
+</div>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
@@ -177,25 +224,27 @@ button{cursor:pointer}
   KATEGORI.forEach(function (k) { KCOLOR[k.n] = k.c; });
 
   var $ = function (id) { return document.getElementById(id); };
-  var state = { uid: getUid(), bulan: thisMonth(), items: [], orang: ['Saya'], who: getWho(), filter: '', editId: null, kategori: KATEGORI[0].n };
+  var state = { user: null, mode: 'masuk', bulan: thisMonth(), items: [], orang: ['Saya'], who: getWho(), filter: '', editId: null, kategori: KATEGORI[0].n };
 
   function getWho() { try { return localStorage.getItem('orang') || 'Saya'; } catch (e) { return 'Saya'; } }
   function setWho(n) { state.who = n; try { localStorage.setItem('orang', n); } catch (e) {} }
   function visible() { return state.filter ? state.items.filter(function (i) { return i.orang === state.filter; }) : state.items; }
   function addOrang(n) { if (state.orang.indexOf(n) === -1) state.orang.push(n); }
 
-  /* ---------- kode perangkat (pengganti login) ---------- */
-  function getUid() {
-    var id = null;
-    try { id = localStorage.getItem('uid'); } catch (e) {}
-    if (!/^[a-f0-9]{32}$/.test(id || '')) {
-      var a = new Uint8Array(16);
-      (window.crypto || window.msCrypto).getRandomValues(a);
-      id = Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
-      try { localStorage.setItem('uid', id); } catch (e) {}
+  /* ---------- penyimpanan token ---------- */
+  var mem = {};
+  function store(k, v) {
+    try {
+      if (v === undefined) return localStorage.getItem(k) || mem[k] || null;
+      if (v === null) { localStorage.removeItem(k); delete mem[k]; }
+      else { localStorage.setItem(k, v); mem[k] = v; }
+    } catch (e) {
+      if (v === undefined) return mem[k] || null;
+      if (v === null) delete mem[k]; else mem[k] = v;
     }
-    return id;
   }
+  // Kode perangkat dari versi tanpa login: catatannya dipindahkan ke akun saat masuk
+  function legacyUid() { var u = store('uid'); return /^[a-f0-9]{32}$/.test(u || '') ? u : ''; }
 
   /* ---------- util ---------- */
   function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -223,7 +272,7 @@ button{cursor:pointer}
 
   /* ---------- panggilan ke Apps Script ---------- */
   function call(action, p) {
-    var payload = Object.assign({ uid: state.uid }, p || {});
+    var payload = Object.assign({ token: store('token') }, p || {});
     return fetch(API_URL, {
       method: 'POST',
       redirect: 'follow',
@@ -235,7 +284,63 @@ button{cursor:pointer}
         throw new Error((r && r.error) || 'Terjadi kesalahan.');
       }, function () {
         throw new Error('Tidak bisa terhubung ke server.');
+      })
+      .catch(function (e) {
+        if (e.message === 'SESI_BERAKHIR') { signOut('Sesi berakhir. Silakan masuk lagi.'); throw new Error('Sesi berakhir.'); }
+        throw e;
       });
+  }
+
+  /* ---------- masuk / daftar ---------- */
+  function drawHeroBar() {
+    var w = [30, 22, 16, 12, 9, 6, 5];
+    $('heroBar').innerHTML = w.map(function (x, i) {
+      return '<i style="display:block;width:' + x + '%;background:' + KATEGORI[i].c + '"></i>';
+    }).join('');
+  }
+  function setMode(m) {
+    state.mode = m;
+    $('tabMasuk').setAttribute('aria-selected', m === 'masuk');
+    $('tabDaftar').setAttribute('aria-selected', m === 'daftar');
+    $('namaWrap').hidden = m !== 'daftar';
+    $('authBtn').textContent = m === 'masuk' ? 'Masuk' : 'Buat akun';
+    $('password').autocomplete = m === 'masuk' ? 'current-password' : 'new-password';
+    $('authErr').textContent = '';
+  }
+  $('tabMasuk').onclick = function () { setMode('masuk'); };
+  $('tabDaftar').onclick = function () { setMode('daftar'); };
+
+  $('authForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var u = $('username').value.trim(), pw = $('password').value;
+    if (!u || !pw) { $('authErr').textContent = 'Isi username dan kata sandi.'; return; }
+    var btn = $('authBtn'); btn.disabled = true; $('authErr').textContent = '';
+    call(state.mode === 'masuk' ? 'login' : 'register', { username: u, password: pw, nama: $('nama').value, lama: legacyUid() })
+      .then(function (d) {
+        store('token', d.token); store('uid', null);
+        state.user = d; $('password').value = ''; startApp();
+      })
+      .catch(function (err) { $('authErr').textContent = err.message; })
+      .then(function () { btn.disabled = false; });
+  });
+
+  function signOut(msg) {
+    var t = store('token');
+    if (t) call('logout', { token: t }).catch(function () {});
+    store('token', null);
+    state.user = null; state.items = []; state.orang = ['Saya']; state.filter = ''; state.editId = null;
+    $('app').hidden = true; $('splash').hidden = true; $('auth').hidden = false;
+    setMode('masuk');
+    if (msg) $('authErr').textContent = msg;
+  }
+  $('logout').onclick = function () { signOut(); };
+
+  function startApp() {
+    $('splash').hidden = true; $('auth').hidden = true; $('app').hidden = false;
+    $('halo').textContent = 'Halo, ' + state.user.nama;
+    state.bulan = thisMonth();
+    resetForm();
+    load();
   }
 
   /* ---------- tampilan ---------- */
@@ -462,8 +567,14 @@ button{cursor:pointer}
   });
 
   /* ---------- mulai ---------- */
-  resetForm();
-  load();
+  drawHeroBar();
+  setMode('masuk');
+  if (store('token')) {
+    call('me').then(function (u) { state.user = u; startApp(); })
+      .catch(function () { $('splash').hidden = true; $('auth').hidden = false; });
+  } else {
+    $('splash').hidden = true; $('auth').hidden = false;
+  }
 })();
 </script>
 </body>
